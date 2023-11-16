@@ -13,11 +13,13 @@ nodata_graph.update_traces(
 nodata_graph.update_layout(
     title={
         "text": "No Available Data",
+        # "bgcolor": "green",
         "y": 0.9,
         "x": 0.5,
         "xanchor": "center",
         "yanchor": "top",
     },
+    # bgcolor="green",
     font=dict(size=18, color="red"),
 )
 
@@ -32,10 +34,12 @@ timeout_graph.update_traces(
 timeout_graph.update_layout(
     title={
         "text": "No Available Data",
+        # "bgcolor": "pink",
         "y": 0.9,
         "x": 0.5,
         "xanchor": "center",
         "yanchor": "top",
     },
+    # bgcolor="pink",
     font=dict(size=18, color="orange"),
 )
