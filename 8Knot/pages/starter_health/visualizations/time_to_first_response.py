@@ -8,7 +8,7 @@ import logging
 from dateutil.relativedelta import *  # type: ignore
 import plotly.express as px
 from pages.utils.graph_utils import get_graph_time_values, color_seq
-from queries.contributors_query import contributors_query as ctq
+from queries.response_time_query import response_time_query as rtq
 import io
 from cache_manager.cache_manager import CacheManager as cm
 from pages.utils.job_utils import nodata_graph
@@ -16,6 +16,16 @@ import time
 import datetime as dt
 import math
 import numpy as np
+
+"""
+Just do PRs for time to first response
+pull from this new view explore_process_time
+
+for design document each graphs visualization is thought out, database exists so not necessarily a need for design,
+do example queries and say what tables we are using, class-model and database-model not necessary, a lot of things in design
+doc don't apply so describing what someone would need to know to build the graph
+so like details of what we are computing, how we query, and settle on type of visualization
+"""
 
 
 PAGE = "starter_health"
@@ -34,7 +44,14 @@ gc_time_to_first_response = dbc.Card(
                     [
                         dbc.PopoverHeader("Graph Info:"),
                         dbc.PopoverBody(
-                            "Stub for time to first response metric"
+                            """
+                            Time to first response is a metric which tracks the average time a 
+                            contributors pull request sits before receiving interaction from a real-person maintainer 
+                            for the project. The longer on average it takes for these requests to receive responses, the more
+                            at risk a project becomes as contributors can become discouraged if feedback time is slow. A general target 
+                            for most projects is to stay within a ~2-day response window. This metric is in particular very helpful 
+                            for project maintainers so that they can ensure adequate response speed.
+                            """
                         ),
                     ],
                     id=f"popover-{PAGE}-{VIZ_ID}",
@@ -45,13 +62,57 @@ gc_time_to_first_response = dbc.Card(
                 dcc.Loading(
                     dcc.Graph(id=f"{PAGE}-{VIZ_ID}"),
                 ),
+                dbc.Form(
+                    [
+                        dbc.Row(
+                            [
+                                dbc.Label(
+                                    "Date Interval:",
+                                    html_for=f"date-interval-{PAGE}-{VIZ_ID}",
+                                    width="auto",
+                                ),
+                                dbc.Col(
+                                    dbc.RadioItems(
+                                        id=f"date-interval-{PAGE}-{VIZ_ID}",
+                                        options=[
+                                            {
+                                                "label": "Day",
+                                                "value": "D",
+                                            },
+                                            {
+                                                "label": "Week",
+                                                "value": "W",
+                                            },
+                                            {"label": "Month", "value": "M"},
+                                            {"label": "Year", "value": "Y"},
+                                        ],
+                                        value="M",
+                                        inline=True,
+                                    ),
+                                    className="me-2",
+                                ),
+                                dbc.Col(
+                                    dbc.Button(
+                                        "About Graph",
+                                        id=f"popover-target-{PAGE}-{VIZ_ID}",
+                                        color="secondary",
+                                        size="sm",
+                                    ),
+                                    width="auto",
+                                    style={"paddingTop": ".5em"},
+                                ),
+                            ],
+                            align="center",
+                        ),
+                    ]
+                ),
             ]
-        )
+        ),
     ],
 )
 
 
-# callback for graph info popover
+# formatting for graph generation
 @callback(
     Output(f"popover-{PAGE}-{VIZ_ID}", "is_open"),
     [Input(f"popover-target-{PAGE}-{VIZ_ID}", "n_clicks")],
@@ -62,142 +123,98 @@ def toggle_popover(n, is_open):
         return not is_open
     return is_open
 
-"""
-# callback for Project Velocity graph
+
+# callback for prs over time graph
 @callback(
     Output(f"{PAGE}-{VIZ_ID}", "figure"),
     [
         Input("repo-choices", "data"),
-        Input(f"graph-view-{PAGE}-{VIZ_ID}", "value"),
-        Input(f"issue-opened-weight-{PAGE}-{VIZ_ID}", "value"),
-        Input(f"issue-closed-weight-{PAGE}-{VIZ_ID}", "value"),
-        Input(f"pr-open-weight-{PAGE}-{VIZ_ID}", "value"),
-        Input(f"pr-merged-weight-{PAGE}-{VIZ_ID}", "value"),
-        Input(f"pr-closed-weight-{PAGE}-{VIZ_ID}", "value"),
-        Input(f"date-picker-range-{PAGE}-{VIZ_ID}", "start_date"),
-        Input(f"date-picker-range-{PAGE}-{VIZ_ID}", "end_date"),
+        Input(f"date-interval-{PAGE}-{VIZ_ID}", "value"),
     ],
     background=True,
 )
-"""
-"""
-def project_velocity_graph(
-    repolist, log, i_o_weight, i_c_weight, pr_o_weight, pr_m_weight, pr_c_weight, start_date, end_date
-):
-
+def time_to_first_response_graph(repolist, interval):
     # wait for data to asynchronously download and become available.
     cache = cm()
-    df = cache.grabm(func=ctq, repos=repolist)
+    df = cache.grabm(func=rtq, repos=repolist)
     while df is None:
         time.sleep(1.0)
-        df = cache.grabm(func=ctq, repos=repolist)
+        df = cache.grabm(func=rtq, repos=repolist)
 
+    # data ready.
     start = time.perf_counter()
-    logging.warning(f"{VIZ_ID}- START")
+    logging.warning("TIME TO FIRST RESPONSE - START")
 
     # test if there is data
     if df.empty:
-        logging.warning(f"{VIZ_ID} - NO DATA AVAILABLE")
+        logging.warning("TIME TO FIRST RESPONSE - NO DATA AVAILABLE")
         return nodata_graph
 
     # function for all data pre processing
-    df = process_data(df, start_date, end_date, i_o_weight, i_c_weight, pr_o_weight, pr_m_weight, pr_c_weight)
+    df_created = process_data(df, interval)
 
-    fig = create_figure(df, log)
+    fig = create_figure(df_created, interval)
 
-    logging.warning(f"{VIZ_ID} - END - {time.perf_counter() - start}")
+    logging.warning(f"TIME_TO_FIRST_RESPONSE_VIZ - END - {time.perf_counter() - start}")
     return fig
 
 
-def process_data(
-    df: pd.DataFrame,
-    start_date,
-    end_date,
-    i_o_weight,
-    i_c_weight,
-    pr_o_weight,
-    pr_m_weight,
-    pr_c_weight,
-):
+def process_data(df: pd.DataFrame, interval):
+    # convert to datetime objects with consistent column name
+    # incoming value should be a posix integer.
+    df["created"] = pd.to_datetime(df["created"], utc=True) #created in this case is actually closed, naming was kept as "created" due to how the query is structured
 
-    # convert to datetime objects rather than strings
-    df["created_at"] = pd.to_datetime(df["created_at"], utc=True)
+    # variable to slice on to handle weekly period edge case
+    period_slice = None
+    if interval == "W":
+        # this is to slice the extra period information that comes with the weekly case
+        period_slice = 10
 
-    # order values chronologically by COLUMN_TO_SORT_BY date
-    df = df.sort_values(by="created_at", axis=0, ascending=True)
-
-    # filter values based on date picker
-    if start_date is not None:
-        df = df[df.created_at >= start_date]
-    if end_date is not None:
-        df = df[df.created_at <= end_date]
-
-    # df to hold value of unique contributors for each repo
-    df_cntrbs = pd.DataFrame(df.groupby("repo_name")["cntrb_id"].nunique()).rename(
-        columns={"cntrb_id": "num_unique_contributors"}
+    # get the average for response time in hours in the desired interval in pandas period format, sort index to order entries
+    df_created = (
+        df.groupby(by=df.created.dt.to_period(interval))["response_time"]
+        .mean()
+        .reset_index()
+        .rename(columns={"created": "Date"})
     )
 
-    # group actions and repos to get the counts of the actions by repo
-    df_actions = pd.DataFrame(df.groupby("repo_name")["Action"].value_counts())
-    df_actions = df_actions.rename(columns={"Action": "count"}).reset_index()
+    # converts date column to a datetime object, converts to string first to handle period information
+    # the period slice is to handle weekly corner case
+    df_created["Date"] = pd.to_datetime(df_created["Date"].astype(str).str[:period_slice])
 
-    # pivot df to reformat the actions to be columns and repo_id to be rows
-    df_actions = df_actions.pivot(index="repo_name", columns="Action", values="count")
+    return df_created
 
-    # df_consolidated combines the actions and unique contributors and then specific columns for visualization use are added on
-    df_consolidated = pd.concat([df_actions, df_cntrbs], axis=1).reset_index()
 
-    # log of commits and contribs
-    df_consolidated["log_num_commits"] = df_consolidated["Commit"].apply(math.log)
-    df_consolidated["log_num_contrib"] = df_consolidated["num_unique_contributors"].apply(math.log)
+def create_figure(df_created: pd.DataFrame, interval):
+    # time values for graph
+    x_r, x_name, hover, period = get_graph_time_values(interval)
 
-    # column to hold the weighted values of pr and issues actions summed together
-    df_consolidated["prs_issues_actions_weighted"] = (
-        df_consolidated["Issue Opened"] * i_o_weight
-        + df_consolidated["Issue Closed"] * i_c_weight
-        + df_consolidated["PR Opened"] * pr_o_weight
-        + df_consolidated["PR Merged"] * pr_m_weight
-        + df_consolidated["PR Closed"] * pr_c_weight
+    # graph geration
+    fig = px.bar(
+        df_created,
+        x="Date",
+        y="response_time",
+        range_x=x_r,
+        labels={"x": x_name, "y": "Average Response Time in Hours"},
+        color_discrete_sequence=[color_seq[3]],
     )
-
-    # column for log value of pr and issue actions
-    df_consolidated["log_prs_issues_actions_weighted"] = df_consolidated["prs_issues_actions_weighted"].apply(math.log)
-
-    return df_consolidated
-
-"""
-def create_figure(df: pd.DataFrame, log):
-
-    y_axis = "prs_issues_actions_weighted"
-    y_title = "Y-Axis"
-    if log:
-        y_axis = "log_prs_issues_actions_weighted"
-        y_title = "Log of Weighted PR/Issue Actions"
-    fig = px.scatter()
-    """
-    # graph generation
-    fig = px.scatter(
-        df,
-        x="log_num_commits",
-        y=y_axis,
-        color="repo_name",
-        size="log_num_contrib",
-        hover_data=["repo_name", "Commit", "PR Opened", "Issue Opened", "num_unique_contributors"],
-        color_discrete_sequence=color_seq,
+    fig.update_traces(hovertemplate=hover + "<br>Average Response Time in Hours: %{y}<br>")
+    fig.update_xaxes(
+        showgrid=True,
+        ticklabelmode="period",
+        dtick=period,
+        rangeslider_yaxis_rangemode="match",
+        range=x_r,
     )
-
-    fig.update_traces(
-        hovertemplate="Repo: %{customdata[0]} <br>Commits: %{customdata[1]} <br>Total PRs: %{customdata[2]}"
-        + "<br>Total Issues: %{customdata[3]} <br>Total Contributors: %{customdata[4]}<br><extra></extra>",
-    )
-    """
-    # layout styling
     fig.update_layout(
-        xaxis_title="Logarithmic Commits",
-        yaxis_title=y_title,
+        xaxis_title=x_name,
+        yaxis_title="Average Response Time in Hours",
         margin_b=40,
+        margin_r=20,
         font=dict(size=14),
-        legend_title="Repo Name",
     )
 
     return fig
+
+
+
