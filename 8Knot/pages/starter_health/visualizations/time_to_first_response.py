@@ -36,7 +36,7 @@ gc_time_to_first_response = dbc.Card(
         dbc.CardBody(
             [
                 html.H3(
-                    "Time to First Response",
+                    "Time to First Response (Pull Requests)",
                     className="card-title",
                     style={"textAlign": "center"},
                 ),
@@ -195,10 +195,10 @@ def create_figure(df_created: pd.DataFrame, interval):
         x="Date",
         y="response_time",
         range_x=x_r,
-        labels={"x": x_name, "y": "Average Response Time in Hours"},
+        labels={"x": x_name, "y": "Average Response Time in Hours (PRs)"},
         color_discrete_sequence=[color_seq[3]],
     )
-    fig.update_traces(hovertemplate=hover + "<br>Average Response Time in Hours: %{y}<br>")
+    fig.update_traces(hovertemplate=hover + "<br>Avg. Response Time in Hours: %{y}<br>")
     fig.update_xaxes(
         showgrid=True,
         ticklabelmode="period",
@@ -207,8 +207,8 @@ def create_figure(df_created: pd.DataFrame, interval):
         range=x_r,
     )
     fig.update_layout(
-        xaxis_title=x_name,
-        yaxis_title="Average Response Time in Hours",
+        xaxis_title="Date Request was Closed",
+        yaxis_title="Average Response Time in Hours (PRs)",
         margin_b=40,
         margin_r=20,
         font=dict(size=14),
