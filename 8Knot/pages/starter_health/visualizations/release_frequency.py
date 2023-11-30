@@ -93,14 +93,12 @@ gc_release_frequency = dbc.Card(
     ],
 )
 
-
 # callback for graph info popover
 @callback(
     Output(f"popover-{PAGE}-{VIZ_ID}", "is_open"),
     [Input(f"popover-target-{PAGE}-{VIZ_ID}", "n_clicks")],
     [State(f"popover-{PAGE}-{VIZ_ID}", "is_open")],
 )
-
 def toggle_popover(n, is_open):
     if n:
         return not is_open
