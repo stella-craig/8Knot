@@ -51,11 +51,17 @@ def response_time_query(self, repos):
                         e.repo_id AS id,
                         e.repo_name AS name,
                         e.hours_to_first_response AS response_time,
-                        e.pr_closed_at AS created
+                        e.pr_closed_at AS created,
+                        e.lines_added AS added,
+						e.lines_removed AS removed,
+						(e.lines_added + e.lines_removed) AS total_lines_changed
                     FROM
                         explorer_pr_response_times e
                     WHERE
-                        e.pr_closed_at is not null and e.hours_to_first_response is not null and repo_id in ({str(repos)[1:-1]})
+                        e.pr_closed_at is not null and 
+                        e.hours_to_first_response is not null and 
+                        (e.lines_added + e.lines_removed) is not null and 
+                        repo_id in ({str(repos)[1:-1]})
                     """
 
     try:
