@@ -49,6 +49,43 @@ gc_contributors = dbc.Card(
                 dcc.Loading(
                     dcc.Graph(id=f"{PAGE}-{VIZ_ID}"),
                 ),
+                dbc.Form(
+                    [
+                        dbc.Row(
+                            [
+                                dbc.Label(
+                                    "Date Interval:",
+                                    html_for=f"date-interval-{PAGE}-{VIZ_ID}",
+                                    width="auto",
+                                ),
+                                dbc.Col(
+                                    dbc.RadioItems(
+                                        id=f"date-interval-{PAGE}-{VIZ_ID}",
+                                        options=[
+                                            {"label": "Week", "value": "W"},
+                                            {"label": "Month", "value": "M"},
+                                            {"label": "Year", "value": "Y"},
+                                        ],
+                                        value="M",
+                                        inline=True,
+                                    ),
+                                    className="me-2",
+                                ),
+                                dbc.Col(
+                                    dbc.Button(
+                                        "About Graph",
+                                        id=f"popover-target-{PAGE}-{VIZ_ID}",
+                                        color="secondary",
+                                        size="sm",
+                                    ),
+                                    width="auto",
+                                    style={"paddingTop": ".5em"},
+                                ),
+                            ],
+                            align="center",
+                        ),
+                    ]
+                ),
             ]
         )
     ],
@@ -65,8 +102,86 @@ def toggle_popover(n, is_open):
         return not is_open
     return is_open
 
-def create_figure(df: pd.DataFrame, action_type):
-    fig = px.scatter()
-    fig.update_layout(legend_title_text="Contributors")
+@callback(
+    Output(f"{PAGE}-{VIZ_ID}", "figure"),
+    [
+        Input("repo-choices", "data"),
+        Input(f"date-interval-{PAGE}-{VIZ_ID}", "value"),
+    ],
+    background=True,
+)
+
+def contributors_graph(repolist,interval):
+    # wait for data to asynchronously download and become available.
+    cache = cm()
+    df = cache.grabm(func=ctq, repos=repolist)
+
+    while df is None:
+            time.sleep(1.0)
+            df = cache.grabm(func=ctq, repos=repolist)
+
+    # data ready.
+    start = time.perf_counter()
+    logging.warning("CONTIBUTORS_VIZ - START")
+
+    # test if there is data
+    if df.empty:
+        logging.warning("CONTRIBUTORS - NO DATA AVAILABLE")
+        return nodata_graph
+    
+    # function for all data pre processing
+    df_released = process_data(df, interval) 
+
+    fig = create_figure(df_released, interval)
+        
+    logging.warning(f"CONTIBUTORS_VIZ - END - {time.perf_counter() - start}")
+
+    return fig
+
+def process_data(df: pd.DataFrame, interval):
+    df["created_at"] = pd.to_datetime(df["created_at"], utc=True)
+    #df.dropna(inplace=True)
+
+    period_slice = None
+    if interval == "W":
+        period_slice = 10
+
+    df_contributors = (
+        df.groupby(by=df.created_at.dt.to_period(interval))["cntrb_id"]
+        .nunique()
+        .reset_index()
+    )
+
+    df_contributors["created_at"] = pd.to_datetime(df_contributors["created_at"].astype(str).str[:period_slice])
+
+    return df_contributors
+
+def create_figure(df_contributors: pd.DataFrame, interval):
+    x_r, x_name, hover, period = get_graph_time_values(interval)
+
+    # graph geration
+    fig = px.line(
+        df_contributors,
+        x="created_at",
+        y="cntrb_id",
+        range_x=x_r,
+        labels={"x": x_name, "y": "Contibutors"},
+        color_discrete_sequence=[color_seq[3]],
+    )
+    fig.update_traces(hovertemplate=hover + "<br>Contributors: %{y}<br>")
+    fig.update_xaxes(
+        showgrid=True,
+        ticklabelmode="period",
+        dtick=period,
+        rangeslider_yaxis_rangemode="match",
+        range=x_r,
+    )
+    fig.update_layout(
+        xaxis_title=x_name,
+        yaxis_title="Number of Contributos",
+        margin_b=40,
+        margin_r=20,
+        font=dict(size=14),
+    )
 
     return fig
