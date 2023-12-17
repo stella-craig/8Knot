@@ -22,12 +22,13 @@ from queries.issue_assignee_query import issue_assignee_query as iaq
 from queries.user_groups_query import user_groups_query as ugq
 from queries.realease_frequency_query import release_frequency_query as rfq
 from queries.response_time_query import response_time_query as rtq
+from queries.forks_query import forks_query as fkq
 import redis
 import flask
 
 
 # list of queries to be run
-QUERIES = [iq, cq, cnq, prq, cmq, iaq, praq, rtq, rfq]
+QUERIES = [iq, cq, cnq, prq, cmq, iaq, praq, rtq, rfq, fkq]
 
 # check if login has been enabled in config
 login_enabled = os.getenv("AUGUR_LOGIN_ENABLED", "False") == "True"
